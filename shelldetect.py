@@ -3,6 +3,8 @@
  Shell Detector  v1.0 
  Shell Detector is released under the MIT License <http://www.opensource.org/licenses/mit-license.php>
 
+ Special thanks to JetBRAINS for PyCharm license
+
  https://github.com/emposha/PHP-Shell-Detector
 """
 
@@ -11,8 +13,9 @@ import os, optparse, base64, codecs, stat
 import fnmatch, time
 
 from hashlib import md5
-from phpserialize import PHP_Serializer
-from urllib.request import urlopen
+import urllib2
+import cgi
+from phpserialize import serialize, unserialize
 from datetime import datetime, date
 
 ssl_support = True
@@ -69,16 +72,16 @@ class shellDetector :
       self._report_format = options.format
     
     self._remotefingerprint = options.remote
-    
-    serial = PHP_Serializer()
+
     if (self._remotefingerprint == True) :
-      url = 'http://www.websecure.co.il/phpshelldetector/api/?task=getlatest'
-      self._fingerprints = urlopen(url).read()
-      self._fingerprints = serial.unserialize(str(base64.b64decode(bytes(self._fingerprints))))
+      url = 'https://raw.github.com/emposha/PHP-Shell-Detector/master/shelldetect.db'
+      self._fingerprints = urllib2(url).read()
+      self._fingerprints = base64.b64decode(bytes(self._fingerprints))
     else :
       if(os.path.isfile("shelldetect.db")) :
         try :
-          self._fingerprints = serial.unserialize(str(base64.b64decode(bytes(open('shelldetect.db', 'rt').read(), 'utf-8')), 'utf-8'))
+          self._fingerprints = base64.encodestring(str(open('shelldetect.db', 'r').read()));
+          self._fingerprints = unserialize(str(self._fingerprints))
         except IOError as e :
           print("({})".format(e))
   
@@ -116,12 +119,13 @@ class shellDetector :
             if _match_line :
               _lineid = md5(_line + _filename)
               self.output(_match_line.implode(', ')  + ' (<a href="#" class="showline" id="ne_' + _lineid + '">line:' + _linecounter + '</a>)', '', False)
-              self.output('<div class="hidden source" id="line_' + _lineid + '"><code>' + escape(_line) + '</code></div>', '', False)
+              self.output('<div class="hidden source" id="line_' + _lineid + '"><code>' + cgi.escape(_line).encode('ascii', 'xmlcharrefreplace') + '</code></div>', '', False)
               self.output('&nbsp;</dd>', '', False)
               _linecounter += 1
         else :
           self.output('<dt>suspicious functions used:</dt><dd>' + _match.implode(', ') + '&nbsp;</dd>', '', False)
         _counter += 1
+        _flag = 1
         self.fingerprint(_filename, _content, _flag)
     self.output('', 'clearer')
     if (len(self._badfiles) == 0) :
@@ -152,7 +156,7 @@ class shellDetector :
     except ValueError :
       _version = 0
     try :
-      _server_version = int(urlopen('http://www.websecure.co.il/phpshelldetector/api/?task=checkver').read(), 10)
+      _server_version = int(urllib2.urlopen('https://raw.github.com/emposha/PHP-Shell-Detector/master/version/app').read(), 10)
     except ValueError :
       _server_version = 0
 
