@@ -22,7 +22,7 @@ Requirements
 Usage
 -----
 
-  python shelldetector.py -d ./
+    python shelldetector.py -d ./
 
 Options
 -------
