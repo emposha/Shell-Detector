@@ -8,212 +8,328 @@
  https://github.com/emposha/PHP-Shell-Detector
 """
 
-import hashlib, sys, re, pickle, json
-import os, optparse, base64, codecs, stat
-import fnmatch, time
-
+import sys
+import re
+import os
+import optparse
+import base64
+import stat
+import fnmatch
+import time
 from hashlib import md5
 import urllib2
 import cgi
-from phpserialize import serialize, unserialize
-from datetime import datetime, date
+import datetime
 
-ssl_support = True
-try:
-  import ssl
-except ImportError :
-  ssl_support = False
 
-class shellDetector :
-  _extension = ["php", "asp", "txt"]
-  
-  #settings: show line number where suspicious function used
-  _showlinenumbers = True
-  #settings: used with access time & modified time
-  _dateformat = "H:i:s d/m/Y"
-  #settings: scan specific directory
-  _directory = '.'
-  #settings: scan hidden files & directories
-  _scan_hidden = True
-  #settings: used with is_cron(true) file format for report file
-  _report_format = 'shelldetector_%d-%m-%Y_%H%M%S.html'
-  #settings: get shells signatures db by remote
-  _remotefingerprint = False
+class PhpSerializer:
+    def unserialize(self, s):
+        return PhpSerializer._unserialize_var(self, s)[0]
 
-  #default ouput 
-  _output = ""
-  _files = []
-  _badfiles = []
-  _fingerprints = []
-  
-  #system: title
-  _title = 'Shell Detector'
-  #system: version of shell detector
-  _version = '1.0'
-  #system: regex for detect Suspicious behavior
-  _regex = r"(?si)(\bpassthru\b|\bshell_exec\b|\bexec\b|\bbase64_decode\b|\beval\b|\bsystem\b|\bproc_open\b|\bpopen\b|\bcurl_exec\b|\bcurl_multi_exec\b|\bparse_ini_file\b|\bshow_source\b)"
-  #system: public key to encrypt file content
-  _public_key = "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0NCk1JR2ZNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0R05BRENCaVFLQmdRRDZCNWZaY2NRN2dROS93TitsWWdONUViVU4NClNwK0ZaWjcyR0QvemFrNEtDWkZISEwzOHBYaS96bVFBU1hNNHZEQXJjYllTMUpodERSeTFGVGhNb2dOdzVKck8NClA1VGprL2xDcklJUzVONWVhYUQvK1NLRnFYWXJ4bWpMVVhmb3JIZ25rYUIxQzh4dFdHQXJZWWZWN2lCVm1mRGMNCnJXY3hnbGNXQzEwU241ZDRhd0lEQVFBQg0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tDQo="
+    def _unserialize_var(self, s):
+        return (
+            {'i': PhpSerializer._unserialize_int
+                , 'b': PhpSerializer._unserialize_bool
+                , 'd': PhpSerializer._unserialize_double
+                , 'n': PhpSerializer._unserialize_null
+                , 's': PhpSerializer._unserialize_string
+                , 'a': PhpSerializer._unserialize_array
+            }[s[0].lower()](self, s[2:]))
 
-  def __init__(self, options) :
-    #set arguments
-    if options.extension != None :
-      self._extension = options.extension.split(',')
-    
-    self._showlinenumbers = options.linenumbers
-    
-    if options.directory != None :
-      self._directory = options.directory
-    
-    if options.dateformat != None :
-      self._dateformat = options.dateformat
-    
-    if options.format != None :
-      self._report_format = options.format
-    
-    self._remotefingerprint = options.remote
+    def _unserialize_int(self, s):
+        x = s.partition(';')
+        return (int(x[0]), x[2])
 
-    if (self._remotefingerprint == True) :
-      url = 'https://raw.github.com/emposha/PHP-Shell-Detector/master/shelldetect.db'
-      self._fingerprints = urllib2(url).read()
-      self._fingerprints = base64.b64decode(bytes(self._fingerprints))
-    else :
-      if(os.path.isfile("shelldetect.db")) :
-        try :
-          self._fingerprints = base64.encodestring(str(open('shelldetect.db', 'r').read()));
-          self._fingerprints = unserialize(str(self._fingerprints))
-        except IOError as e :
-          print("({})".format(e))
-  
-  def start(self) :
-    self.header()
-    if ssl_support == False :
-      print('Please note ssl library not found, suspicious files will be included in html without encryption.')
-    if self._fingerprints.__len__ == 0 :
-      print('Please note, shells signature database not found, suspicious files will be scan only by behavior.')
+    def _unserialize_bool(self, s):
+        x = s.partition(';')
+        return (x[0] == '1', x[2])
 
-    #start
-    self.version()
-    self.filescan()
-    self.anaylize()
-    #end
+    def _unserialize_double(self, s):
+        x = s.partition(';')
+        return (float(x[0]), x[2])
 
-    self.flush()
-    return None
+    def _unserialize_null(self, s):
+        return (None, s)
 
-  def anaylize(self) :
-    _counter = 0
-    for _filename in self._files :
-      _content = open(_filename , 'rt', -1 ,'utf-8').read()
-      _regex = re.compile(self._regex)
-      _match = _regex.findall(_content)
-      print(_match)
-      if _match :
-        _fileinfo = self.getfileinfo (_filename)
-        if self._showlinenumbers :
-          self.output('<dt>suspicious functions used:</dt><dd>', '', False)
-          _lines = _content.split("\n")
-          _linecounter = 1
-          for _line in _lines :
-            _match_line = _regex.findall(_line)
-            if _match_line :
-              _lineid = md5(_line + _filename)
-              self.output(_match_line.implode(', ')  + ' (<a href="#" class="showline" id="ne_' + _lineid + '">line:' + _linecounter + '</a>)', '', False)
-              self.output('<div class="hidden source" id="line_' + _lineid + '"><code>' + cgi.escape(_line).encode('ascii', 'xmlcharrefreplace') + '</code></div>', '', False)
-              self.output('&nbsp;</dd>', '', False)
-              _linecounter += 1
-        else :
-          self.output('<dt>suspicious functions used:</dt><dd>' + _match.implode(', ') + '&nbsp;</dd>', '', False)
-        _counter += 1
-        _flag = 1
-        self.fingerprint(_filename, _content, _flag)
-    self.output('', 'clearer')
-    if (len(self._badfiles) == 0) :
-      _bad_files = str(len(self._badfiles))
-      _class = 'success'
-    else :
-      _bad_files = '<strong>' + str(len(self._badfiles)) + '</strong>'
-      _class = 'error'
-    self.output('<strong>Status</strong>: ' + str(_counter) + ' suspicious files found and ' + _bad_files + ' shells found', 'success')
-    
-  
-  def fingerprint(self, _filename, _content, _flag) :
-    print ('test')
+    def _unserialize_string(self, s):
+        (l, _, s) = s.partition(':')
+        return (s[1:int(l) + 1], s[int(l) + 3:])
 
-  def getfileinfo(self, _file) :
-    _file_stats = os.stat(_file)
-    self.output('<dl><dt>Suspicious behavior found in: ' + _file + '<span class="plus">-</span></dt>', '', False)
-    self.output('<dd><dl><dt>Full path:</dt><dd>' + _file + '</dd>', '', False)
-    self.output('<dt>Owner:</dt><dd>' + str(_file_stats.st_uid) + '</dd>', '', False)
-    self.output('<dt>Permission:</dt><dd>'  +  oct(_file_stats[stat.ST_MODE])[-3:] +  '</dd>', '', False)
-    self.output('<dt>Last accessed:</dt><dd>' + time.strftime(self._dateformat, time.localtime(_file_stats[stat.ST_ATIME])) + '</dd>', '', False)
-    self.output('<dt>Last modified:</dt><dd>' + time.strftime(self._dateformat, time.localtime(_file_stats[stat.ST_MTIME])) + '</dd>', '', False)
-    self.output('<dt>Filesize:</dt><dd>' + str(_file_stats [stat.ST_SIZE]) +  '</dd>', '', False)
+    def _unserialize_array(self, s):
+        (l, _, s) = s.partition(':')
+        a, k, s = {}, None, s[1:]
 
-  def version(self) :
-    try :
-      _version = self._fingerprints['version']
-    except ValueError :
-      _version = 0
-    try :
-      _server_version = int(urllib2.urlopen('https://raw.github.com/emposha/PHP-Shell-Detector/master/version/app').read(), 10)
-    except ValueError :
-      _server_version = 0
+        for i in range(0, int(l) * 2):
+            (v, s) = PhpSerializer._unserialize_var(self, s)
 
-    if (_server_version == 0) :
-      self.alert('Cant connect to server! Version check failed!', 'error')
-    else :
-      if (_server_version < int(_version)) :
-        self.alert('New version of shells signature database found. Please update!', 'error')
+            if k:
+                a[k] = v
+                k = None
+            else:
+                k = v
 
-  def filescan(self) :
-    self.alert('Starting file scanner, please be patient file scanning can take some time.')
-    self.alert('Number of known shells in database is: ' + str(len(self._fingerprints)))
-    self.listdir()
-    self.alert('File scan done, we have: ' + str(len(self._files)) + ' files to analize')
+        return (a, s[1:])
 
-  def listdir(self) :
-    for root, dirnames, filenames in os.walk(self._directory) :
-      for extension in self._extension:
-        for filename in fnmatch.filter(filenames, '*.' + extension) :
-          self._files.append(os.path.join(root, filename))
-    return None
 
-  def header(self) :
-    _style = '<style type="text/css" media="all">body{background-color:#ccc;font:13px tahoma,arial;color:#151515;direction:ltr}h1{text-align:center;font-size:24px}dl{margin:0;padding:0}#content{width:1024px;margin:0 auto;padding:35px 40px;border:1px solid #e8e8e8;background:#fff;overflow:hidden;-webkit-border-radius:7px;-moz-border-radius:7px;border-radius:7px}dl dt{cursor:pointer;background:#5f9be3;color:#fff;float:left;font-weight:700;margin-right:10px;width:99%;position:relative;padding:5px}dl dt .plus{position:absolute;right:4px}dl dd{margin:2px 0;padding:5px 0}dl dd dl{margin-top:24px;margin-left:60px}dl dd dl dt{background:#4fcba3!important;width:180px!important}.error{background-color:#ffebe8;border:1px solid #dd3c10;padding:4px 10px;margin:5px 0}.success{background-color:#fff;border:1px solid #bdc7d8;padding:4px 10px;margin:5px 0}.info{background-color:#fff9d7;border:1px solid #e2c822;padding:4px 10px;margin:5px 0}.clearer{clear:both;height:0;font-size:0}.hidden{display:none}.green{font-weight:700;color:#92b901}.red{font-weight:700;color:#dd3c10}.green small{font-weight:400!important;color:#151515!important}.filesfound{position:relative}.files{position:absolute;left:4px;background-color:#fff9d7}iframe{border:0px;height:24px;width:100%}.small{font-size: 10px;font-weight:normal;}.ui-widget-content dl dd dl {margin-left: 0px !important;}.ui-widget-content input {width: 310px;margin-top: 4px;}</style>'
-    _script = 'function init(){$("dt").click(function(){var text=$(this).children(".plus");if(text.length){$(this).next("dd").slideToggle();if(text.text()=="+"){text.text("-")}else{text.text("+")}}});$(".showline").click(function(){var id="li"+$(this).attr("id");$("#"+id).dialog({height:440,modal:true,width:600,title:"Source code"});return false});$(".source_submit").click(function(){var id="for"+$(this).attr("id");$("#wrap"+id).dialog({autoOpen:false,height:200,width:550,modal:true,resizable: false,title:"File submission",buttons:{"Submit file":function(){if($(".ui-dialog-content form").length){$("#i"+id).removeClass("hidden");$("#"+id).submit();$(".ui-dialog-content form").remove()}else{alert("This file already submited")}}}});$("#wrap"+id).dialog("open");return false})}$(document).ready(init);'
-    self.output('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>Web Shell Detector</title>' + _style + '<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.13/themes/base/jquery-ui.css" type="text/css" media="all" /><script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js" type="text/javascript" charset="utf-8"></script><script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.13/jquery-ui.min.js" type="text/javascript" charset="utf-8"></script><script type="text/javascript">' + _script + '</script></head><body><h1>' + self._title + ' ' + self._version +'</h1><div id="content">', '', False)
+class ShellDetector:
+    _extension = ["php", "asp", "txt"]
 
-  def alert(self, _content, _class='info', _html = True) :
-    print (_content)
-    self.output(_content, _class, _html)
+    #settings: show command line message only (no html report will be created)
+    _command_line = True
+    #settings: show line number where suspicious function used
+    _showlinenumbers = True
+    #settings: used with access time & modified time
+    _dateformat = "H:i:s d/m/Y"
+    #settings: scan specific directory
+    _directory = '.'
+    #settings: scan hidden files & directories
+    _scan_hidden = True
+    #settings: used with is_cron(true) file format for report file
+    _report_format = 'shelldetector_%d-%m-%Y_%H%M%S.html'
+    #settings: get shells signatures db by remote
+    _remotefingerprint = False
 
-  def output(self, _content, _class='info', _html = True) :
-    if(_html) :
-      self._output += '<div class="' + _class + '">' + _content + '</div>'
-    else:
-      self._output += _content
+    #default ouput
+    _output = ""
+    _files = []
+    _badfiles = []
+    _fingerprints = []
 
-  def flush(self) :
-    print("Flush")
-    #filename = datetime.now().strftime(self._report_format)
-    #file = open(filename, "w", -1,'utf-8')
-    #file.write(self._output)
+    #system: title
+    _title = 'Shell Detector'
+    #system: version of shell detector
+    _version = '1.1'
+    #system: regex for detect Suspicious behavior
+    _regex = r"(?si)(preg_replace.*\/e|`.*?\$.*?`|\bpassthru\b|\bshell_exec\b|\bexec\b|\bbase64_decode\b|\beval\b|\bsystem\b|\bproc_open\b|\bpopen\b|\bcurl_exec\b|\bcurl_multi_exec\b|\bparse_ini_file\b|\bshow_source\b)"
+
+    def __init__(self, options):
+        #set arguments
+        if options.extension is not None:
+            self._extension = options.extension.split(',')
+
+        self._showlinenumbers = options.linenumbers
+
+        if options.directory is not None:
+            self._directory = options.directory
+
+        """if options.dateformat is not None:
+            self._dateformat = options.dateformat
+
+        if options.format is not None:
+            self._report_format = options.format"""
+
+        self._remotefingerprint = options.remote.lower() in ("yes", "true", "t", "1")
+
+    def remote(self):
+        if self._remotefingerprint is True:
+            self.alert('Please note we using remote shell database', 'yellow')
+            url = 'https://raw.github.com/emposha/PHP-Shell-Detector/master/shelldetect.db'
+            self._fingerprints = urllib2.urlopen(url).read()
+            try:
+                self._fingerprints = base64.decodestring(bytes(self._fingerprints))
+                serial = PhpSerializer()
+                self._fingerprints = serial.unserialize(str(self._fingerprints))
+            except IOError as e:
+                print("({})".format(e))
+        else:
+            if os.path.isfile("shelldetect.db"):
+                try:
+                    self._fingerprints = base64.decodestring(str(open('shelldetect.db', 'r').read()))
+                    serial = PhpSerializer()
+                    self._fingerprints = serial.unserialize(str(self._fingerprints))
+                except IOError as e:
+                    print("({})".format(e))
+
+    def start(self):
+        self.header()
+
+        #start
+        self.remote()
+        self.version()
+        self.filescan()
+        self.anaylize()
+        #end
+
+        self.footer()
+        return None
+
+    def anaylize(self):
+        _counter = 0
+        for _filename in self._files:
+            _content = open(_filename, 'rt', -1).read()
+            _regex = re.compile(self._regex)
+            _match = _regex.findall(_content)
+            if _match:
+                self.getfileinfo(_filename)
+                if self._showlinenumbers is True:
+                    _lines = _content.split("\n")
+                    _linecounter = 1
+                    for _line in _lines:
+                        _match_line = _regex.findall(_line)
+                        if _match_line:
+                            self.alert('   Suspicious function used: ' + _match_line.__str__() + '(line: ' + str( _linecounter) + ')')
+                        _linecounter += 1
+                else:
+                    self.alert('   Suspicious functions used: ' + _match.__str__())
+                _counter += 1
+            self.fingerprint(_filename, _content)
+            self.alert('')
+            self.alert('=======================================================', 'yellow')
+        self.alert('')
+        self.alert('Status: ' + str(_counter) + ' suspicious files and ' + str(len(self._badfiles)) + ' shells', 'red')
+
+    def fingerprint(self, _filename, _content):
+        for fingerprint, shellname in self._fingerprints.iteritems():
+            if 'bb:' in fingerprint:
+                fingerprint = base64.decodestring(bytes(fingerprint.replace('bb:', '')))
+            _regex = re.compile(re.escape(fingerprint))
+            _match = _regex.findall(_content)
+            if _match:
+                self._badfiles[len(self._badfiles) + 1] = _filename
+                _regex_shell = re.compile(re.escape('#(.*)\[(.*?)\]\[(.*?)\]\[(.*?)\]#'))
+                _match_shell = _regex_shell.findall(shellname)
+                _shell_note = ''
+                if _match_shell[3] == 1:
+                    _shell_note = 'please note it`s a malicious file not a shell'
+                elif _match_shell[3] == 2:
+                    _shell_note = 'please note potentially dangerous file (legit file but may be used by hackers)'
+                _shellflag = _match_shell[1] + '(' + _match_shell[4] + ')'
+                self.alert('   Fingerprint: Positive, it`s a ' + str(_shellflag) + ' ' + _shell_note, 'red')
+
+    def unpack(self):
+        """ Need to work on it"""
+
+
+    def getfileinfo(self, _file):
+        (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(_file)
+        self.alert('')
+        self.alert('=======================================================', 'yellow')
+        self.alert('')
+        self.alert('   Suspicious behavior found in: ' + _file)
+        self.alert('   Full path:     ' + os.path.abspath(_file))
+        self.alert('   Owner:         ' + str(uid) + ':' + str(gid))
+        self.alert('   Permission:    ' + oct(mode)[-3:])
+        self.alert('   Last accessed: ' + time.ctime(atime))
+        self.alert('   Last modified: ' + time.ctime(mtime))
+        self.alert('   Filesize:      ' + str(size) + 'b')
+        self.alert('')
+
+    def version(self):
+        try:
+            _version = self._fingerprints['version']
+        except ValueError:
+            _version = 0
+        try:
+            _server_version = urllib2.urlopen('https://raw.github.com/emposha/PHP-Shell-Detector/master/version/db').read()
+        except ValueError:
+            _server_version = 0
+
+        if _server_version == 0:
+            self.alert( 'Cant connect to server! Version check failed!', 'red')
+        else:
+            if _server_version < _version:
+                self.alert('New version of shells signature database found. Please update!', 'red')
+
+        try:
+            _app_server_version = urllib2.urlopen('https://raw.github.com/emposha/Shell-Detector/master/version/app').read()
+        except urllib2.HTTPError:
+            _app_server_version = 0
+
+        if _app_server_version == 0:
+            self.alert('Cant connect to server! Application version check failed!', 'red')
+        else:
+            if _server_version < _version:
+                self.alert('New version of application found. Please update!', 'red')
+
+    def filescan(self):
+        self.alert('Starting file scanner, please be patient file scanning can take some time.')
+        self.alert('Number of known shells in database is: ' + str(len(self._fingerprints)))
+        self.listdir()
+        self.alert('File scan done, we have: ' + str(len(self._files)) + ' files to analize')
+
+    def listdir(self):
+        for root, dirnames, filenames in os.walk(self._directory):
+            for extension in self._extension:
+                for filename in fnmatch.filter(filenames, '*.' + extension):
+                    self._files.append(os.path.join(root, filename))
+        return None
+
+    def header(self):
+        self.alert('*************************************************************************************************')
+        self.alert('*                                                                                               *')
+        self.alert('*                                 Welcom to Shell Detector Tool 1.1                             *')
+        self.alert('*                                More information can be found here                             *')
+        self.alert('*                                   http://www.shelldetector.com                                *')
+        self.alert('*                                                                                               *')
+        self.alert('*************************************************************************************************')
+        self.alert('')
+
+    def footer(self):
+        self.alert('')
+        self.alert('*************************************************************************************************', 'green')
+        self.alert('*                                                                                               *', 'green')
+        self.alert('*                  In case you need help email us at support@shelldetector.com                  *', 'green')
+        self.alert('*                                                                                               *', 'green')
+        self.alert('*************************************************************************************************', 'green')
+        self.alert('')
+
+    def alert(self, _content, _color='', _class='info', _html=False, _flag=False):
+        _color_result = {
+            'red': '\033[91m',
+            'green': '\033[92m',
+            'yellow': '\033[93m',
+            'purple': '\033[95m',
+            'blue': '\033[94m',
+            '': ''
+        }[_color]
+
+        if self.supports_color() is True:
+            print _color_result + _content + '\033[0m'
+        else:
+            print _content
+
+        if _flag is True:
+            self.output(_content, _class, _html)
+
+    def supports_color(self):
+        """
+        --- Taken from Django ---
+        Returns True if the running system's terminal supports color, and False
+        otherwise.
+        """
+        plat = sys.platform
+        supported_platform = plat != 'Pocket PC' and (plat != 'win32' or
+                                                      'ANSICON' in os.environ)
+        # isatty is not always implemented, #6223.
+        is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+        if not supported_platform or not is_a_tty:
+            return False
+        return True
+
+    def output(self, _content, _class='info', _html=True):
+        if _html is True:
+            self._output += '<div class="' + _class + '">' + _content + '</div>'
+        else:
+            self._output += _content
+
+    def flush(self):
+        if self._command_line is False:
+            print("Flush")
+            filename = datetime.now().strftime(self._report_format)
+            file = open(filename, "w", -1, 'utf-8')
+            file.write(self._output)
 
 #Start
 parser = optparse.OptionParser()
 parser.add_option('--extension', '-e', type="string", default="php,txt,asp", help="file extensions that should be scanned")
 parser.add_option('--linenumbers', '-l', default=True, help="show line number where suspicious function used")
-parser.add_option('--directory', '-d', type="string", help="used with access time & modified time")
-parser.add_option('--dateformat', '-a', type="string", help="scan specific directory")
-parser.add_option('--format', '-f', type="string", help="file format for report file")
+parser.add_option('--directory', '-d', type="string", help="specify directory to scan")
 parser.add_option('--remote', '-r', default=False, help="get shells signatures db by remote")
 (options, args) = parser.parse_args()
 
-if len(sys.argv) == 0 :
-  parser.print_usage()
-  parser.print_help()
-else :
-  shell = shellDetector(options)
-  shell.start()
-#End
+if len(sys.argv) == 1:
+    parser.print_usage()
+    parser.print_help()
+else:
+    shell = ShellDetector(options)
+    shell.start()
