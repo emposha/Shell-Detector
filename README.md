@@ -22,7 +22,8 @@ Requirements
 Usage
 -----
 
-    python shelldetector.py -d ./
+    wget https://raw.github.com/emposha/Shell-Detector/master/shelldetect.py
+    python shelldetector.py -r True -d ./
 
 Options
 -------
