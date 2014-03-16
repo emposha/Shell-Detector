@@ -173,19 +173,19 @@ class ShellDetector:
                     self.alert('   Suspicious functions used: ' + _match.__str__())
                 _counter += 1
             self.fingerprint(_filename, _content)
-            self.alert('')
-            self.alert('=======================================================', 'yellow')
-        self.alert('')
+        self.alert('=======================================================', 'yellow')
         self.alert('Status: ' + str(_counter) + ' suspicious files and ' + str(len(self._badfiles)) + ' shells', 'red')
 
     def fingerprint(self, _filename, _content):
         for fingerprint, shellname in self._fingerprints.iteritems():
+            if fingerprint == "version":
+                continue
             if 'bb:' in fingerprint:
                 fingerprint = base64.decodestring(bytes(fingerprint.replace('bb:', '')))
             _regex = re.compile(re.escape(fingerprint))
             _match = _regex.findall(_content)
             if _match:
-                self._badfiles[len(self._badfiles) + 1] = _filename
+                self._badfiles.append([_filename])
                 _regex_shell = re.compile(re.escape('#(.*)\[(.*?)\]\[(.*?)\]\[(.*?)\]#'))
                 _match_shell = _regex_shell.findall(shellname)
                 _shell_note = ''
@@ -211,8 +211,14 @@ class ShellDetector:
         self.alert('   Permission:    ' + oct(mode)[-3:])
         self.alert('   Last accessed: ' + time.ctime(atime))
         self.alert('   Last modified: ' + time.ctime(mtime))
-        self.alert('   Filesize:      ' + str(size) + 'b')
+        self.alert('   Filesize:      ' + self.sizeof_fmt(size))
         self.alert('')
+
+    def sizeof_fmt(self, num):
+        for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+            if num < 1024.0:
+                return "%3.1f %s" % (num, x)
+            num /= 1024.0
 
     def version(self):
         try:
@@ -321,10 +327,10 @@ class ShellDetector:
 
 #Start
 parser = optparse.OptionParser()
-parser.add_option('--extension', '-e', type="string", default="php,txt,asp", help="file extensions that should be scanned")
+parser.add_option('--extension', '-e', type="string", default="php,txt,asp", help="file extensions that should be scanned, comma separated")
 parser.add_option('--linenumbers', '-l', default=True, help="show line number where suspicious function used")
 parser.add_option('--directory', '-d', type="string", help="specify directory to scan")
-parser.add_option('--remote', '-r', default=False, help="get shells signatures db by remote")
+parser.add_option('--remote', '-r', default="False", help="get shells signatures db by remote")
 (options, args) = parser.parse_args()
 
 if len(sys.argv) == 1:
