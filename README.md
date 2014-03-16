@@ -23,7 +23,7 @@ Usage
 -----
 
     wget https://raw.github.com/emposha/Shell-Detector/master/shelldetect.py
-    python shelldetector.py -r True -d ./
+    python shelldetect.py -r True -d ./
 
 Options
 -------
