@@ -176,13 +176,19 @@ class ShellDetector:
         self.alert('=======================================================', 'yellow')
         self.alert('Status: ' + str(_counter) + ' suspicious files and ' + str(len(self._badfiles)) + ' shells', 'red')
 
+    def _get_precomputed_fingerprints(self):
+        if not hasattr(self, '_precomputed_fingerprints'):
+            self._precomputed_fingerprints = []
+            for fingerprint, shellname in self._fingerprints.iteritems():
+                if fingerprint == "version":
+                    continue
+                if 'bb:' in fingerprint:
+                    fingerprint = base64.decodestring(bytes(fingerprint.replace('bb:', '')))
+                self._precomputed_fingerprints.append((re.compile(re.escape(fingerprint)), shellname))
+        return self._precomputed_fingerprints
+    
     def fingerprint(self, _filename, _content):
-        for fingerprint, shellname in self._fingerprints.iteritems():
-            if fingerprint == "version":
-                continue
-            if 'bb:' in fingerprint:
-                fingerprint = base64.decodestring(bytes(fingerprint.replace('bb:', '')))
-            _regex = re.compile(re.escape(fingerprint))
+        for _regex, shellname in self._get_precomputed_fingerprints():
             _match = _regex.findall(_content)
             if _match:
                 self._badfiles.append([_filename])
