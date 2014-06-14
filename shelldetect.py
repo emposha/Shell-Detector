@@ -155,9 +155,9 @@ class ShellDetector:
 
     def anaylize(self):
         _counter = 0
+        _regex = re.compile(self._regex)
         for _filename in self._files:
             _content = open(_filename, 'rt', -1).read()
-            _regex = re.compile(self._regex)
             _match = _regex.findall(_content)
             if _match:
                 self.getfileinfo(_filename)
