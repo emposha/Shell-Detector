@@ -270,7 +270,7 @@ class ShellDetector:
     def header(self):
         self.alert('*************************************************************************************************')
         self.alert('*                                                                                               *')
-        self.alert('*                                 Welcom to Shell Detector Tool 1.1                             *')
+        self.alert('*                                Welcome to Shell Detector Tool 1.1                             *')
         self.alert('*                                More information can be found here                             *')
         self.alert('*                                   http://www.shelldetector.com                                *')
         self.alert('*                                                                                               *')
