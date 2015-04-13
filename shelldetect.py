@@ -193,14 +193,14 @@ class ShellDetector:
             _match = _regex.findall(_content)
             if _match:
                 self._badfiles.append([_filename])
-                _regex_shell = re.compile(re.escape('#(.*)\[(.*?)\]\[(.*?)\]\[(.*?)\]#'))
-                _match_shell = _regex_shell.findall(shellname)
+                _regex_shell = re.compile('^(.+?)\[(.+?)\]\[(.+?)\]\[(.+?)\]')
+                _match_shell = list(_regex_shell.findall(shellname)[0])
                 _shell_note = ''
-                if _match_shell[3] == 1:
+                if _match_shell[2] == 1:
                     _shell_note = 'please note it`s a malicious file not a shell'
-                elif _match_shell[3] == 2:
+                elif _match_shell[2] == 2:
                     _shell_note = 'please note potentially dangerous file (legit file but may be used by hackers)'
-                _shellflag = _match_shell[1] + '(' + _match_shell[4] + ')'
+                _shellflag = _match_shell[0] + '(' + _match_shell[3] + ')'
                 self.alert('   Fingerprint: Positive, it`s a ' + str(_shellflag) + ' ' + _shell_note, 'red')
 
     def unpack(self):
@@ -258,7 +258,7 @@ class ShellDetector:
         self.alert('Starting file scanner, please be patient file scanning can take some time.')
         self.alert('Number of known shells in database is: ' + str(len(self._fingerprints)))
         self.listdir()
-        self.alert('File scan done, we have: ' + str(len(self._files)) + ' files to analize')
+        self.alert('File scan done, we have: ' + str(len(self._files)) + ' files to analyze')
 
     def listdir(self):
         for root, dirnames, filenames in os.walk(self._directory):
