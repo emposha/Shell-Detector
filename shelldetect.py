@@ -122,7 +122,7 @@ class ShellDetector:
 
     def remote(self):
         if self._remotefingerprint is True:
-            self.alert('Please note we using remote shell database', 'yellow')
+            self.alert('Please note we are using remote shell database', 'yellow')
             url = 'https://raw.github.com/emposha/PHP-Shell-Detector/master/shelldetect.db'
             self._fingerprints = urllib2.urlopen(url).read()
             try:
