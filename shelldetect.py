@@ -190,7 +190,7 @@ class ShellDetector:
     
     def fingerprint(self, _filename, _content):
         for _regex, shellname in self._get_precomputed_fingerprints():
-            _match = _regex.findall(_content)
+            _match = _regex.findall(base64.b64encode(_content))
             if _match:
                 self._badfiles.append([_filename])
                 _regex_shell = re.compile('^(.+?)\[(.+?)\]\[(.+?)\]\[(.+?)\]')
