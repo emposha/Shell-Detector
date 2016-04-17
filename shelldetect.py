@@ -7,7 +7,7 @@
 
  https://github.com/emposha/PHP-Shell-Detector
 """
-
+import threading
 import sys
 import re
 import os
@@ -22,7 +22,10 @@ import cgi
 import datetime
 
 
-class PhpSerializer:
+class PhpSerializer(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        
     def unserialize(self, s):
         return PhpSerializer._unserialize_var(self, s)[0]
 
@@ -71,7 +74,7 @@ class PhpSerializer:
         return (a, s[1:])
 
 
-class ShellDetector:
+class ShellDetector(threading.Thread):
     _extension = ["php", "asp", "txt"]
 
     #settings: show command line message only (no html report will be created)
@@ -103,6 +106,7 @@ class ShellDetector:
     _regex = r"(?si)(preg_replace.*\/e|`.*?\$.*?`|\bpassthru\b|\bshell_exec\b|\bexec\b|\bbase64_decode\b|\beval\b|\bsystem\b|\bproc_open\b|\bpopen\b|\bcurl_exec\b|\bcurl_multi_exec\b|\bparse_ini_file\b|\bshow_source\b)"
 
     def __init__(self, options):
+        threading.Thread.__init__(self)
         #set arguments
         if options.extension is not None:
             self._extension = options.extension.split(',')
