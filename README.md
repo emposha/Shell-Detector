@@ -12,7 +12,7 @@ Special thanks to "JetBrains" for PyCharm licence!
 Detection
 ---------
 
-  Number of known shells: 538
+  Number of known shells: 604
 
 Requirements
 ---------
